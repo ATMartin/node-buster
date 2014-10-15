@@ -4,6 +4,6 @@
   "author": "Alex Martin <@ADotMartin>",
   "dependencies": {
     "shelljs": "*",
-    "promptly": "*"
+    "inquirer": "*"
   }
 }

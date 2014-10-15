@@ -2,30 +2,26 @@
 var shell = require('shelljs'),
     util = require('util'),
     path = require('path'),
-    fs = require('fs');
+    fs = require('fs'),
+    inquirer = require('inquirer');
 
 Array.prototype.includes = function(v) { return this.indexOf(v) !== -1; } 
 
-var myprompt = {
-  defaultInput: function() {
-    var input = "ERROR";
-    process.stdin.resume();
-    process.stdin.on('data', function(txt) { process.stdin.pause(); return txt; });
-  },
 
-  readline: function(msg) {
-    console.log(msg);
-    this.defaultInput();
-  }
-}
+console.log("Welcome to Node-Buster!");
 
-var name = myprompt.readline("What's your name?");
-/*  ^-- This is non-blocking - it accepts input, but only after running
- *  the directives that come after, resulting in "undefined" calls.
- *  Gotta work on making it block. Maybe use callbacks / "promises"?
- *  I don't want to rely on those but they might work, especiall in a 
- *  loop scenario. 
- */
+var questionsInit = [
+  {
+    type: "list",
+    name: "Command",
+    message: "What would you like to do?",
+    choices: ["1. Set up a local repo", "2. Configure an existing repo", "3. Generate static pages", "4. Push existing pages to my repo"],
+    filter: function (choice) { return choice.charAt(0); }
+    }
+];
 
-console.log("Thanks, " + name + "!");
+inquirer.prompt( questionsInit, function(answers) {
+  console.log(JSON.stringify(answers, null, ' '));
+});
+
 
