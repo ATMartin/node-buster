@@ -1,0 +1,9 @@
+{
+  "name": "node-buster",
+  "description": "A static-page generator targetting Ghost blogs.",
+  "author": "Alex Martin <@ADotMartin>",
+  "dependencies": {
+    "shelljs": "*",
+    "promptly": "*"
+  }
+}
