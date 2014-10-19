@@ -7,14 +7,15 @@ var shell = require('shelljs'),
 
 Array.prototype.includes = function(v) { return this.indexOf(v) !== -1; } 
 
-function repo(url, branch, remoteName) {
-  this.url = url;
+function site(name, siteUrl, repoUrl, branch, remoteName) {
+  this.name = name;
+  this.siteUrl = siteUrl;
+  this.repoUrl = repoUrl;
   this.branch = branch;
   this.remoteName = remoteName;
 }
 
-var repoStore = [],
-    repoChoices = [];
+var activeSite = {};
 
 //---------------------QUESTIONS---------------------------
 var questionsInit = [
@@ -22,7 +23,7 @@ var questionsInit = [
     type: "list",
     name: "startup",
     message: "What would you like to do?",
-    choices: ["1. Set up a local repo", "2. Configure an existing repo", "3. Generate static pages", "4. Push existing pages to my repo", "5. Quit this utility."],
+    choices: ["1. Set up a new site", "2. Configure my existing site", "3. Generate static pages", "4. Push existing pages to my repo", "5. Quit this utility."],
     filter: function (choice) { return choice.charAt(0); }
     }
 ];
@@ -64,13 +65,49 @@ var questionsSetup = [
   }
 ];
 
-var questionsConfigure = [
+var questionsSiteSetup = [
   {
-    type: "list",
-    name: "repoList",
-    message: "Which repo would you like to configure?",
-    choices: repoChoices,
-    filter: function(choice) { return repoStore.filter(function(e) { e.remoteName === choice.substr(3); }); }
+    type: "confirm",
+    name: "siteSetupConfirm",
+    message: "This will erase your current site? Is this okay?",
+    default: false
+  }
+]
+
+var questionsSiteConfigure = [
+  {
+    type: "input",
+    name: "name",
+    message: "What would you like to call this site?",
+  },
+  {
+    type: "input",
+    name: "siteUrl",
+    message: "Where is the active site located?",
+  },
+  {
+  	type: "input",
+  	name: "repoUrl",
+  	message: "What's the address for your static repo?",
+  },
+  {
+  	type: "input",
+  	name: "branch",
+  	message: "Which branch would you like to push to?",
+  },
+  {
+  	type: "input",
+  	name: "remoteName",
+  	message: "What would like your remote name to be?",
+  }
+];
+
+var questionsSiteOk = [
+  {
+    type: "confirm",
+    name: "siteOkConfirm",
+    message: "Would you like to update/change these settings?",
+    default: false
   }
 ];
 
@@ -84,16 +121,13 @@ var questionsGenerate = [
 
 //------------------PROMPTS--------------------------------
 var startup = function() {
-  if (fs.existsSync("repoStore.json")) { 
+  if (fs.existsSync("siteStore.json")) { 
     try { 
-      repoStore = JSON.parse(fs.readFileSync("repoStore.json"));
-      var i = 1;
-      repoStore.forEach( function(obj) { repoChoices.push( i + ". " + obj.remoteName); i++; });
+      activeSite = JSON.parse(fs.readFileSync("siteStore.json"));
     } catch (e) {
       //Probably a syntax error - no worries. Just move on.
     }
   }
-  //console.log(repoStore);
   inquirer.prompt( questionsInit, function(answers) {
     switch (answers.startup) {
       case "1":
@@ -141,44 +175,91 @@ var promptSetup = function() {
     }
   }); 
 };
+
 var promptConfigure = function() {
-  if (repoStore.length == 0) {
-    console.log("You have no repos currently set up!");
-    startup();
+  if (!fs.existsSync("siteStore.json")) {
+    console.log("You have no sites currently set up!");
+    inquirer.prompt ( questionsSiteSetup, function(answers) {
+      if (answers.siteSetupConfirm) {
+        inquirer.prompt ( questionsSiteConfigure, function(answers) {
+    	    activeSite = new site(answers.name, answers.siteUrl, answers.repoUrl, answers.branch, answers.remoteName);
+    	    fs.writeFileSync("siteStore.json", JSON.stringify(activeSite));
+    	    startup();
+        });
+      } else {
+        console.log("Please set up a site to continue.");
+        startup();
+      }
+    });
+  } else {
+    console.log("Your current site settings are:");
+    console.log("**************************************");
+    console.log("NAME: " + activeSite.name);
+    console.log("URL: " + activeSite.siteUrl);
+    console.log("REPO: " + activeSite.repoUrl);
+    console.log("BRANCH: " + activeSite.branch);
+    console.log("REMOTE: " + activeSite.remoteName);
+    console.log("**************************************");
+    inquirer.prompt ( questionsSiteOk, function(answers) {
+      if (answers.siteOkConfirm) {
+        inquirer.prompt ( questionsSiteConfigure, function(answers) {
+          activeSite.name = answers.name;
+          activeSite.siteUrl = answers.siteUrl;
+          activeSite.repoUrl = answers.repoUrl;
+          activeSite.branch = answers.branch;
+          activeSite.remoteName = answers.remoteName;
+          fs.writeFileSync("siteStore.json", JSON.stringify(activeSite));
+          console.log("Your active site has been updated!");
+          startup();
+        });
+      } else {
+        console.log("Thanks for checking!");
+        startup();
+      }
+    });
   }
-  inquirer.prompt( questionsConfigure, function(answers) {
-    console.log(answers);
-    startup();
-  });
 };
+
 var promptGenerate = function() {
-  inquirer.prompt(questionsGenerate, function(answers) {
-    var commandText = "wget --recursive" +
-                      " --convert-links" +
-                      " --page-requisites" +
-                      " --no-parent" +
-                      " --directory-prefix ./static" +
-                      " --no-host-directories" +
-                      " " + answers.sourceUrl;
-    console.log("Retreiving your blog from " + answers.sourceUrl + " now!");
+   if (activeSite === {}) { console.log("No active site set!"); startup(); }
+   var commandText = "wget --recursive" +
+                     " --convert-links" +
+                     " --page-requisites" +
+                     " --no-parent" +
+                     " --directory-prefix ./static" +
+                     " --no-host-directories" +
+                     " " + activeSite.siteUrl;
+    console.log("Checking for existing site now.");
+    if (fs.existsSync("./static/.git")) {
+      shell.cd("static");
+      shell.exec("git pull");
+      shell.cd("..");
+    } else {
+      shell.mkdir("static");
+      shell.exec("git clone " + activeSite.repoUrl + " static");
+    }
+    console.log("Retreiving your blog from " + activeSite.siteUrl + " now!");
     shell.exec(commandText, function(err, stdout, stderr) {
-      if (err === null || err === "0") { 
+      if (err === null || err === 0) { 
         console.log("Static generation complete!"); 
       } else { 
         console.log("Uh-oh, something broke: " + err);   
       }
       startup();
     });
-  });
 };
 var promptPush = function() {
+  if (activeSite === {}) { console.log("You don't have an active site set up for this!"); startup(); }
   shell.cd("static");
-  shell.exec("git push origin gh-pages");
+  shell.exec("git add .");
+  shell.exec("git commit -m 'Auto-update by Node-Buster!'");
+  shell.exec("git push " + activeSite.remoteName + " " + activeSite.branch);
   shell.cd("..");
+  console.log("Your site has been updated!");
   startup();
 };
 var promptExit = function() {
-  fs.writeFileSync("repoStore.json", JSON.stringify(repoStore));
+  fs.writeFileSync("siteStore.json", JSON.stringify(activeSite));
   console.log("Thanks for using Node-Buster! See you soon!");
   process.exit(0);
 };
