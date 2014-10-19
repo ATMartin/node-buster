@@ -7,6 +7,15 @@ var shell = require('shelljs'),
 
 Array.prototype.includes = function(v) { return this.indexOf(v) !== -1; } 
 
+function repo(url, branch, remoteName) {
+  this.url = url;
+  this.branch = branch;
+  this.remoteName = remoteName;
+}
+
+var repoStore = [],
+    repoChoices = [];
+
 //---------------------QUESTIONS---------------------------
 var questionsInit = [
   {
@@ -24,6 +33,44 @@ var questionsSetup = [
       name: "confirmation",
       message: "This will delete any existing content. Is this okay?",
       default: false
+  },
+  {
+    type: "confirm",
+    name: "confirmRepo",
+    message: "Would you like to add a remote to this repo?",
+    default: false,
+    when: function(answers) { return answers.confirmation; }
+    
+  },
+  {
+    type: "input",
+    name: "url",
+    message: "What is the URL for your repository?: ",
+    when: function(answers) { return answers.confirmRepo; }
+  },
+  {
+    type: "input",
+    name: "branch",
+    message: "Which branch would you like to push to? (default: 'gh-pages'): ",
+    default: "gh-pages",
+    when: function(answers) { return answers.confirmRepo; }
+  },
+  {
+    type: "input",
+    name: "remoteName",
+    message: "What would you like to call this remote? (default: 'origin'): ",
+    default: "origin",
+    when: function(answers) { return answers.confirmRepo; }
+  }
+];
+
+var questionsConfigure = [
+  {
+    type: "list",
+    name: "repoList",
+    message: "Which repo would you like to configure?",
+    choices: repoChoices,
+    filter: function(choice) { return repoStore.filter(function(e) { e.remoteName === choice.substr(3); }); }
   }
 ];
 
@@ -36,7 +83,17 @@ var questionsGenerate = [
 ];
 
 //------------------PROMPTS--------------------------------
-var startup = function() { 
+var startup = function() {
+  if (fs.existsSync("repoStore.json")) { 
+    try { 
+      repoStore = JSON.parse(fs.readFileSync("repoStore.json"));
+      var i = 1;
+      repoStore.forEach( function(obj) { repoChoices.push( i + ". " + obj.remoteName); i++; });
+    } catch (e) {
+      //Probably a syntax error - no worries. Just move on.
+    }
+  }
+  //console.log(repoStore);
   inquirer.prompt( questionsInit, function(answers) {
     switch (answers.startup) {
       case "1":
@@ -70,15 +127,30 @@ var promptSetup = function() {
       shell.cd("static");
       shell.exec("git init");
       shell.exec("git checkout -b 'gh-pages'");
-      shell.cd("..");
-      console.log("Git setup complete!");
+      if (answers.confirmRepo) {
+        var newRepo = new repo(answers.url, answers.branch, answers.remoteName);
+        shell.exec("git remote add " + newRepo.remoteName + " " + newRepo.url);
+        repoStore.push(newRepo);
+      }
+     shell.cd("..");
+     console.log("Git setup complete!");
+     startup();
     } else {
       console.log("Returning to index...");
+      startup();
     }
-    startup();
   }); 
 };
-var promptConfigure = function() {};
+var promptConfigure = function() {
+  if (repoStore.length == 0) {
+    console.log("You have no repos currently set up!");
+    startup();
+  }
+  inquirer.prompt( questionsConfigure, function(answers) {
+    console.log(answers);
+    startup();
+  });
+};
 var promptGenerate = function() {
   inquirer.prompt(questionsGenerate, function(answers) {
     var commandText = "wget --recursive" +
@@ -106,6 +178,7 @@ var promptPush = function() {
   startup();
 };
 var promptExit = function() {
+  fs.writeFileSync("repoStore.json", JSON.stringify(repoStore));
   console.log("Thanks for using Node-Buster! See you soon!");
   process.exit(0);
 };
